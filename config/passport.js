@@ -30,14 +30,12 @@ passport.use(new GoogleStrategy({
       } else {
         console.log('Updating existing user:', user.email);
         user.accessToken = accessToken;
-        // user.refreshToken = refreshToken;
-        if (refreshToken) {
+      if (refreshToken) {
         user.refreshToken = refreshToken;
       }
-      
-      user.tokenInvalid = false;  // Reset invalid flag
-      user.lastTokenRefresh = new Date();
-        await user.save();
+      user.tokenInvalid = false;
+      await user.save();
+      return done(null, user);
       }
 
       done(null, user);

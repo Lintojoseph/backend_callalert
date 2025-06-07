@@ -101,3 +101,17 @@ exports.savePhoneNumber = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 }
+
+exports.requireReauth = async (req, res) => {
+  const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    redirect_uri: process.env.GOOGLE_CALLBACK_URL,
+    response_type: 'code',
+    scope: 'profile email https://www.googleapis.com/auth/calendar.readonly',
+    access_type: 'offline',
+    prompt: 'consent',
+    state: req.user.id // Pass user ID for association
+  })}`;
+  
+  res.json({ authUrl });
+};
