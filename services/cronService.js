@@ -218,69 +218,66 @@ async function getUserWithRefreshedToken(user) {
 
 async function processUser(user) {
   try {
-    const refreshedUser = await getUserWithRefreshedToken(user)
-    if (!refreshedUser) return
+    const refreshedUser = await getUserWithRefreshedToken(user);
+    if (!refreshedUser) return;
 
-    const now = new Date()
-    const fiveMinutesLater = new Date(now.getTime() + 5 * 60 * 1000)
-    const fiveMinutesEarlier = new Date(now.getTime() - 5 * 60 * 1000)
+    // Get current time in IST
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const nowIST = new Date(now.getTime() + istOffset);
     
-    console.log(`[CRON] Checking events for ${user.email}`)
-    console.log(`[CRON] Time range: ${fiveMinutesEarlier.toISOString()} to ${fiveMinutesLater.toISOString()}`)
+    const fiveMinutesLaterIST = new Date(nowIST.getTime() + 5 * 60 * 1000);
+    
+    console.log(`[CRON] Checking events for ${user.email}`);
+    console.log(`[CRON] IST Time range: ${nowIST.toISOString()} to ${fiveMinutesLaterIST.toISOString()}`);
     
     const events = await listEvents(
       refreshedUser.accessToken,
-      fiveMinutesEarlier,
-      fiveMinutesLater
-    )
-    console.log(`[CRON] Access token: ${refreshedUser.accessToken ? 'Exists' : 'Missing'}`);
-    console.log(`[CRON] Found ${events.length} events for ${user.email}`)
+      nowIST,
+      fiveMinutesLaterIST
+    );
+    
+    console.log(`[CRON] Found ${events.length} events for ${user.email}`);
     
     if (events.length > 0) {
       events.forEach(event => {
-        console.log(`[CRON] - Event: ${event.summary || 'No title'} at ${event.start.dateTime}`)
-      })
+        console.log(`[CRON] - Event: ${event.summary || 'No title'} at ${event.start.dateTime}`);
+      });
 
-      // Find the soonest upcoming event
-      const nextEvent = events.reduce((soonest, event) => {
-        const eventStart = new Date(event.start.dateTime || event.start.date)
-        return (!soonest || eventStart < new Date(soonest.start.dateTime)) ? event : soonest
-      }, null)
-
-      if (nextEvent) {
-        const eventSummary = nextEvent.summary || 'An upcoming event'
-        const eventStart = new Date(nextEvent.start.dateTime || nextEvent.start.date)
+      // Process all events in the time window
+      for (const event of events) {
+        const eventSummary = event.summary || 'An upcoming event';
+        const eventStart = new Date(event.start.dateTime || event.start.date);
         
-        // Format time in user's local time (India timezone)
-        const eventTime = eventStart.toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          timeZone: 'Asia/Kolkata'
-        })
-
-        const message = `Reminder: You have "${eventSummary}" starting at ${eventTime}.`
+        // Calculate time difference in minutes (IST to IST)
+        const timeDiff = (eventStart - nowIST) / (1000 * 60);
         
-        // Debug event time
-        console.log(`[CRON] Event time: UTC ${eventStart.toISOString()}, Local ${eventTime}`)
-
-        // Only proceed if event is within 5 minutes
-        const timeDiff = (eventStart - now) / (1000 * 60)  // minutes
+        // Only process if event is within 0-5 minutes
         if (timeDiff <= 5 && timeDiff >= 0) {
-          console.log(`[CRON] Preparing call for ${user.email}: ${message}`)
-          await makeCall(user.phoneNumber, message)
-          user.lastNotifiedEvent = nextEvent.id
-          await user.save()
-          console.log(`[CRON] Call initiated for ${user.email}`)
+          const eventTime = eventStart.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Asia/Kolkata'
+          });
+
+          const message = `Reminder: You have "${eventSummary}" starting at ${eventTime}.`;
+          console.log(`[CRON] Preparing call for ${user.email}: ${message}`);
+          
+          await makeCall(user.phoneNumber, message);
+          console.log(`[CRON] Call initiated for ${user.email}`);
+          
+          // Update last notified only for this event
+          user.lastNotifiedEvent = event.id;
+          await user.save();
         } else {
-          console.log(`[CRON] Event not within 5 minutes (${timeDiff.toFixed(1)} min)`)
+          console.log(`[CRON] Event not within 5 minutes (${timeDiff.toFixed(1)} min)`);
         }
       }
     }
   } catch (userError) {
-    console.error(`[CRON] Error processing user ${user.email}:`, userError)
+    console.error(`[CRON] Error processing user ${user.email}:`, userError);
   }
 }
-
 function setupCalendarChecks() {
   cron.schedule('* * * * *', async () => {
     if (isJobRunning) {
