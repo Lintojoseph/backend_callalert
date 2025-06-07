@@ -178,10 +178,8 @@ const userProcessingLimiter = new ConcurrencyLimiter(3)
 
 async function getUserWithRefreshedToken(user) {
   if (!user.refreshToken) {
-    console.error(`[CRON] No refresh token for ${user.email}`)
-    user.tokenInvalid = true
-    await user.save()
-    return null
+    console.log(`[CRON] No refresh token for ${user.email}, using existing access token`);
+    return user; // Return user without refreshing
   }
 
   const oauth2Client = new OAuth2Client(
@@ -235,7 +233,7 @@ async function processUser(user) {
       fiveMinutesEarlier,
       fiveMinutesLater
     )
-    
+    console.log(`[CRON] Access token: ${refreshedUser.accessToken ? 'Exists' : 'Missing'}`);
     console.log(`[CRON] Found ${events.length} events for ${user.email}`)
     
     if (events.length > 0) {
@@ -295,14 +293,15 @@ function setupCalendarChecks() {
     
     try {
       // Find users with phone numbers and valid tokens
-      const users = await User.find({ 
+      const users = await User.find({
         phoneNumber: { $exists: true, $ne: null, $ne: "" },
         $or: [
           { tokenInvalid: { $exists: false } },
           { tokenInvalid: false },
           { tokenInvalid: { $ne: true } }
         ]
-      })
+      });
+      
       
       console.log(`[CRON] Found ${users.length} users to process`)
       
