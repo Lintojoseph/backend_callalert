@@ -82,7 +82,14 @@ mongoose.connect(process.env.MONGODB_URI, {
 })
 .then(() => console.log('MongoDB connected'))
 .catch(err => console.error('MongoDB connection error:', err))
-
+app.enable('trust proxy');
+app.use((req, res, next) => {
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    next();
+  } else {
+    res.redirect(`https://${req.headers.host}${req.url}`);
+  }
+});
 // Routes
 app.use('/auth', authRoutes)
 app.use('/api/calendar', calendarRoutes)
