@@ -30,7 +30,8 @@ const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TO
 // }
 async function makeCall(phoneNumber, message) {
   try {
-    // Ensure message is clean
+    
+    console.log(`[DEBUG] Attempting call to: ${phoneNumber}`);
     const cleanMessage = message.replace(/undefined/g, 'an event');
     
     // Encode for URL safety
@@ -55,7 +56,11 @@ async function makeCall(phoneNumber, message) {
     console.log(`Call SID: ${call.sid}`);
     return call.sid;
   } catch (error) {
-    console.error('Twilio call error:', error);
+    console.error('Twilio call error:', {
+      code: error.code,
+      message: error.message,
+      phoneNumber,
+      status: error.status});
     throw error;
   }
 }
