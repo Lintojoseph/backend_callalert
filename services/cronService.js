@@ -294,19 +294,31 @@ function setupCalendarChecks() {
     console.log('[CRON] Starting scheduled job')
     
     try {
+      // Find users with phone numbers and valid tokens
       const users = await User.find({ 
-        phoneNumber: { $exists: true, $ne: null },
-        tokenInvalid: { $ne: true },
-        refreshToken: { $exists: true, $ne: null }
+        phoneNumber: { $exists: true, $ne: null, $ne: "" },
+        $or: [
+          { tokenInvalid: { $exists: false } },
+          { tokenInvalid: false },
+          { tokenInvalid: { $ne: true } }
+        ]
       })
       
       console.log(`[CRON] Found ${users.length} users to process`)
       
+      // Debug: Log users found
+      if (users.length > 0) {
+        console.log('[CRON] Users to process:');
+        users.forEach(user => {
+          console.log(`- ${user.email}: Phone: ${user.phoneNumber}, TokenInvalid: ${user.tokenInvalid || false}`);
+        });
+      }
+      
       // Process users with concurrency control
       await Promise.all(users.map(user => 
         userProcessingLimiter.run(() => processUser(user))
-      ))
-      
+      )
+    )
     } catch (error) {
       console.error('[CRON] Job processing error:', error)
     } finally {
