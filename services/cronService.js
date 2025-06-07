@@ -133,13 +133,48 @@ const { listEvents } = require('./calendarService')
 const { makeCall } = require('./twilioService')
 const User = require('../models/User')
 const { OAuth2Client } = require('google-auth-library')
-const pLimit = require('p-limit')
-
-// Limit concurrent user processing to prevent overload
-const userProcessingLimit = pLimit(3)
 
 // Track if job is running to prevent overlaps
 let isJobRunning = false
+
+// CommonJS alternative to p-limit
+class ConcurrencyLimiter {
+  constructor(concurrency) {
+    this.queue = []
+    this.active = 0
+    this.concurrency = concurrency
+  }
+
+  run(fn) {
+    return new Promise((resolve, reject) => {
+      const execute = async () => {
+        this.active++
+        try {
+          resolve(await fn())
+        } catch (error) {
+          reject(error)
+        } finally {
+          this.active--
+          this.next()
+        }
+      }
+
+      this.queue.push(execute)
+      if (this.active < this.concurrency) {
+        this.next()
+      }
+    })
+  }
+
+  next() {
+    if (this.active >= this.concurrency || !this.queue.length) return
+    const nextTask = this.queue.shift()
+    nextTask()
+  }
+}
+
+// Create limiter with concurrency of 3
+const userProcessingLimiter = new ConcurrencyLimiter(3)
 
 async function getUserWithRefreshedToken(user) {
   if (!user.refreshToken) {
@@ -269,9 +304,9 @@ function setupCalendarChecks() {
       
       // Process users with concurrency control
       await Promise.all(users.map(user => 
-        userProcessingLimit(() => processUser(user))
-      )
-    )
+        userProcessingLimiter.run(() => processUser(user))
+      ))
+      
     } catch (error) {
       console.error('[CRON] Job processing error:', error)
     } finally {
