@@ -133,6 +133,8 @@ const { listEvents } = require('./calendarService')
 const { makeCall } = require('./twilioService')
 const User = require('../models/User')
 const { OAuth2Client } = require('google-auth-library')
+const moment = require('moment-timezone');
+require('moment/locale/en-in'); 
 
 // Track if job is running to prevent overlaps
 let isJobRunning = false
@@ -221,20 +223,17 @@ async function processUser(user) {
     const refreshedUser = await getUserWithRefreshedToken(user);
     if (!refreshedUser) return;
 
-    // Get current time in IST
-    const now = new Date();
-    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
-    const nowIST = new Date(now.getTime() + istOffset);
-    
-    const fiveMinutesLaterIST = new Date(nowIST.getTime() + 5 * 60 * 1000);
+    // Use moment-timezone for accurate time handling
+    const now = moment().tz('Asia/Kolkata');
+    const fiveMinutesLater = now.clone().add(5, 'minutes');
     
     console.log(`[CRON] Checking events for ${user.email}`);
-    console.log(`[CRON] IST Time range: ${nowIST.toISOString()} to ${fiveMinutesLaterIST.toISOString()}`);
+    console.log(`[CRON] IST Time range: ${now.format()} to ${fiveMinutesLater.format()}`);
     
     const events = await listEvents(
       refreshedUser.accessToken,
-      nowIST,
-      fiveMinutesLaterIST
+      now.toDate(), // Convert to JavaScript Date
+      fiveMinutesLater.toDate()
     );
     
     console.log(`[CRON] Found ${events.length} events for ${user.email}`);
@@ -244,33 +243,27 @@ async function processUser(user) {
         console.log(`[CRON] - Event: ${event.summary || 'No title'} at ${event.start.dateTime}`);
       });
 
-      // Process all events in the time window
+      // Process all events in the window
       for (const event of events) {
         const eventSummary = event.summary || 'An upcoming event';
-        const eventStart = new Date(event.start.dateTime || event.start.date);
+        const eventStart = moment(event.start.dateTime).tz('Asia/Kolkata');
+        const eventTime = eventStart.format('hh:mm a');
         
-        // Calculate time difference in minutes (IST to IST)
-        const timeDiff = (eventStart - nowIST) / (1000 * 60);
+        const message = `Reminder: You have "${eventSummary}" starting at ${eventTime}.`;
+        const timeDiff = eventStart.diff(now, 'minutes');
         
-        // Only process if event is within 0-5 minutes
+        console.log(`[CRON] Event time: ${eventStart.format()} (${timeDiff} minutes from now)`);
+        
         if (timeDiff <= 5 && timeDiff >= 0) {
-          const eventTime = eventStart.toLocaleTimeString('en-IN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Asia/Kolkata'
-          });
-
-          const message = `Reminder: You have "${eventSummary}" starting at ${eventTime}.`;
           console.log(`[CRON] Preparing call for ${user.email}: ${message}`);
-          
           await makeCall(user.phoneNumber, message);
           console.log(`[CRON] Call initiated for ${user.email}`);
           
-          // Update last notified only for this event
+          // Update last notified
           user.lastNotifiedEvent = event.id;
           await user.save();
         } else {
-          console.log(`[CRON] Event not within 5 minutes (${timeDiff.toFixed(1)} min)`);
+          console.log(`[CRON] Event not within 5 minutes (${timeDiff} min)`);
         }
       }
     }

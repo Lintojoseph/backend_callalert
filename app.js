@@ -45,6 +45,7 @@
 // app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
 // In app.js (at the very top)
 process.env.TZ = 'Asia/Kolkata'
+console.log('Server timezone set to:', process.env.TZ);
 require('dotenv').config()
 const express = require('express')
 const mongoose = require('mongoose')
