@@ -7,7 +7,9 @@ passport.use(new GoogleStrategy({
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL:  process.env.GOOGLE_CALLBACK_URL,
     scope: ['profile', 'email', 'https://www.googleapis.com/auth/calendar.readonly'],
-    passReqToCallback: true
+    passReqToCallback: true,
+    accessType: 'offline',  // Add this
+    prompt: 'consent',      
   },
   async (req, accessToken, refreshToken, profile, done) => {
     try {
@@ -22,13 +24,19 @@ passport.use(new GoogleStrategy({
           name: profile.displayName,
           email: profile.emails[0].value,
           accessToken,
-          refreshToken
+          refreshToken:refreshToken || null
         });
         await user.save();
       } else {
         console.log('Updating existing user:', user.email);
         user.accessToken = accessToken;
+        // user.refreshToken = refreshToken;
+        if (refreshToken) {
         user.refreshToken = refreshToken;
+      }
+      
+      user.tokenInvalid = false;  // Reset invalid flag
+      user.lastTokenRefresh = new Date();
         await user.save();
       }
 

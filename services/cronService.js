@@ -5,30 +5,30 @@ const { makeCall } = require('./twilioService')
 const User = require('../models/User')
 const { OAuth2Client } = require('google-auth-library')
 
-async function getUserWithRefreshedToken(user) {
-  const oauth2Client = new OAuth2Client(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  )
+// async function getUserWithRefreshedToken(user) {
+//   const oauth2Client = new OAuth2Client(
+//     process.env.GOOGLE_CLIENT_ID,
+//     process.env.GOOGLE_CLIENT_SECRET
+//   )
   
-  oauth2Client.setCredentials({
-    access_token: user.accessToken,
-    refresh_token: user.refreshToken
-  })
+//   oauth2Client.setCredentials({
+//     access_token: user.accessToken,
+//     refresh_token: user.refreshToken
+//   })
 
-  try {
-    const { token } = await oauth2Client.getAccessToken()
-    if (token && token !== user.accessToken) {
-      user.accessToken = token
-      await user.save()
-      console.log(`Refreshed token for ${user.email}`)
-    }
-    return user
-  } catch (error) {
-    console.error(`Token refresh failed for ${user.email}:`, error)
-    return null
-  }
-}
+//   try {
+//     const { token } = await oauth2Client.getAccessToken()
+//     if (token && token !== user.accessToken) {
+//       user.accessToken = token
+//       await user.save()
+//       console.log(`Refreshed token for ${user.email}`)
+//     }
+//     return user
+//   } catch (error) {
+//     console.error(`Token refresh failed for ${user.email}:`, error)
+//     return null
+//   }
+// }
 
 // function setupCalendarChecks() {
 //   cron.schedule('* * * * *', async () => {
@@ -141,13 +141,62 @@ async function getUserWithRefreshedToken(user) {
 //     }
 //   });
 // }
+async function getUserWithRefreshedToken(user) {
+  // Skip if no refresh token
+  if (!user.refreshToken) {
+    console.error(`No refresh token for ${user.email}. Requires re-authentication.`);
+    user.tokenInvalid = true;
+    await user.save();
+    return null;
+  }
+
+  const oauth2Client = new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+  
+  oauth2Client.setCredentials({
+    access_token: user.accessToken,
+    refresh_token: user.refreshToken
+  });
+
+  try {
+    const { credentials } = await oauth2Client.refreshAccessToken();
+    
+    // Update tokens
+    user.accessToken = credentials.access_token;
+    if (credentials.refresh_token) {
+      user.refreshToken = credentials.refresh_token;
+    }
+    
+    await user.save();
+    console.log(`Refreshed token for ${user.email}`);
+    return user;
+  } catch (error) {
+    console.error(`Token refresh failed for ${user.email}:`, error);
+    
+    // Handle specific errors
+    if (error.response && error.response.data && error.response.data.error === 'invalid_grant') {
+      console.error(`Refresh token revoked for ${user.email}. Requires re-authentication.`);
+      user.tokenInvalid = true;
+      await user.save();
+    }
+    
+    return null;
+  }
+}
 function setupCalendarChecks() {
   cron.schedule('* * * * *', async () => {
     try {
-      const users = await User.find({ 
-        phoneNumber: { $exists: true, $ne: null },
-        accessToken: { $exists: true }
-      });
+    //   const users = await User.find({ 
+    //     phoneNumber: { $exists: true, $ne: null },
+    //     accessToken: { $exists: true }
+    //   });
+     const users = await User.find({ 
+      phoneNumber: { $exists: true, $ne: null },
+      tokenInvalid: { $ne: true }, // Skip invalid users
+      refreshToken: { $exists: true, $ne: null } // Only users with refresh tokens
+    });
       
       for (const user of users) {
         try {
@@ -162,7 +211,8 @@ function setupCalendarChecks() {
           const fiveMinutesEarlier = new Date(utcNow.getTime() - 5 * 60 * 1000);
           
           const events = await listEvents(
-            refreshedUser.accessToken, 
+            refreshedUser.accessToken,
+            refreshedUser.refreshToken, 
             fiveMinutesEarlier,
             fiveMinutesLater
           );

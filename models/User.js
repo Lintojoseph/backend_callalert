@@ -29,6 +29,11 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  tokenInvalid: {
+    type: Boolean,
+    default: false
+  },
+  lastTokenRefresh: Date,
   tokenExpiry: Date
 })
 
