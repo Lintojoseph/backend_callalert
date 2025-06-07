@@ -59,7 +59,7 @@ async function listEvents(accessToken, timeMin, timeMax) {
     process.env.GOOGLE_CLIENT_SECRET
   )
   
-  // Set only the access token - refresh token not needed here
+  // Set credentials with access token only
   oauth2Client.setCredentials({ access_token: accessToken })
     
   const calendar = google.calendar({ version: 'v3', auth: oauth2Client })
@@ -71,22 +71,22 @@ async function listEvents(accessToken, timeMin, timeMax) {
       calendarId: 'primary',
       timeMin: timeMin.toISOString(),
       timeMax: timeMax.toISOString(),
-      maxResults: 10,
+      maxResults: 20, // Increased to catch more events
       singleEvents: true,
       orderBy: 'startTime',
-      timeZone: 'Asia/Kolkata'  // Use user's timezone
+      timeZone: 'Asia/Kolkata'  // User's timezone
     })
 
-    // Filter out all-day events and cancelled events
-    const validEvents = response.data.items.filter(event => {
+    // Filter events
+    const validEvents = (response.data.items || []).filter(event => {
       return event.status !== 'cancelled' && 
              event.start && 
-             event.start.dateTime  // Only include events with specific times
+             event.start.dateTime // Only include timed events
     })
 
     console.log(`[CALENDAR] Found ${validEvents.length} valid events`)
     
-    // Detailed event logging
+    // Detailed logging
     validEvents.forEach(event => {
       const start = new Date(event.start.dateTime)
       console.log(`[CALENDAR] Event: "${event.summary || 'No title'}" at ${start.toLocaleString('en-IN', {
@@ -100,7 +100,11 @@ async function listEvents(accessToken, timeMin, timeMax) {
 
     return validEvents
   } catch (error) {
-    console.error('Error listing calendar events:', error.response?.data || error.message)
+    console.error('Calendar API error:', {
+      status: error.response?.status,
+      message: error.message,
+      data: error.response?.data
+    })
     return []
   }
 }
