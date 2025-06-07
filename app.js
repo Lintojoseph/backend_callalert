@@ -43,6 +43,8 @@
 
 // const PORT = process.env.PORT || 3001
 // app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
+// In app.js (at the very top)
+process.env.TZ = 'Asia/Kolkata'
 require('dotenv').config()
 const express = require('express')
 const mongoose = require('mongoose')
