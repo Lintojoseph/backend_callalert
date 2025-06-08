@@ -178,103 +178,43 @@ class ConcurrencyLimiter {
 // Create limiter with concurrency of 3
 const userProcessingLimiter = new ConcurrencyLimiter(3)
 
-// async function getUserWithRefreshedToken(user) {
-//   if (!user.refreshToken) {
-//     console.log(`[CRON] No refresh token for ${user.email}, using existing access token`);
-//     return user; // Return user without refreshing
-//   }
-
-//   const oauth2Client = new OAuth2Client(
-//     process.env.GOOGLE_CLIENT_ID,
-//     process.env.GOOGLE_CLIENT_SECRET
-//   )
-  
-//   // Only need refresh token for refreshing
-//   oauth2Client.setCredentials({
-//     refresh_token: user.refreshToken
-//   })
-
-//   try {
-//     const { credentials } = await oauth2Client.refreshAccessToken()
-    
-//     // Update tokens
-//     user.accessToken = credentials.access_token
-//     // Keep existing refresh token if new one isn't provided
-//     user.refreshToken = credentials.refresh_token || user.refreshToken
-    
-//     await user.save()
-//     console.log(`[CRON] Refreshed token for ${user.email}`)
-//     return user
-//   } catch (error) {
-//     console.error(`[CRON] Token refresh failed for ${user.email}:`, error)
-    
-//     if (error.response?.data?.error === 'invalid_grant') {
-//       console.error(`[CRON] Refresh token revoked for ${user.email}`)
-//       user.tokenInvalid = true
-//       await user.save()
-//     }
-    
-//     return null
-//   }
-// }
 async function getUserWithRefreshedToken(user) {
+  if (!user.refreshToken) {
+    console.log(`[CRON] No refresh token for ${user.email}, using existing access token`);
+    return user; // Return user without refreshing
+  }
+
+  const oauth2Client = new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  )
+  
+  // Only need refresh token for refreshing
+  oauth2Client.setCredentials({
+    refresh_token: user.refreshToken
+  })
+
   try {
-    // Handle users without refresh tokens
-    if (!user.refreshToken) {
-      console.log(`[CRON] No refresh token for ${user.email}, attempting with access token`);
-      
-      // Validate existing access token
-      const isValid = await validateGoogleToken(user.accessToken);
-      if (isValid) return user;
-      
-      console.error(`[CRON] Access token invalid for ${user.email}`);
-      user.tokenInvalid = true;
-      await user.save();
-      return null;
-    }
-
-    const oauth2Client = new OAuth2Client(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
-    );
-    
-    oauth2Client.setCredentials({ refresh_token: user.refreshToken });
-
-    const { credentials } = await oauth2Client.refreshAccessToken();
+    const { credentials } = await oauth2Client.refreshAccessToken()
     
     // Update tokens
-    user.accessToken = credentials.access_token;
-    if (credentials.refresh_token) {
-      user.refreshToken = credentials.refresh_token;
-    }
+    user.accessToken = credentials.access_token
+    // Keep existing refresh token if new one isn't provided
+    user.refreshToken = credentials.refresh_token || user.refreshToken
     
-    await user.save();
-    console.log(`[CRON] Refreshed token for ${user.email}`);
-    return user;
+    await user.save()
+    console.log(`[CRON] Refreshed token for ${user.email}`)
+    return user
   } catch (error) {
-    console.error(`[CRON] Token refresh failed for ${user.email}:`, error);
+    console.error(`[CRON] Token refresh failed for ${user.email}:`, error)
     
     if (error.response?.data?.error === 'invalid_grant') {
-      console.error(`[CRON] Refresh token revoked for ${user.email}`);
-      user.tokenInvalid = true;
-      await user.save();
-      
-      // Add re-authentication notification logic here
+      console.error(`[CRON] Refresh token revoked for ${user.email}`)
+      user.tokenInvalid = true
+      await user.save()
     }
     
-    return null;
-  }
-}
-
-// Add token validation function
-async function validateGoogleToken(accessToken) {
-  const oauth2Client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-  try {
-    await oauth2Client.getTokenInfo(accessToken);
-    return true;
-  } catch (error) {
-    console.error('Token validation error:', error);
-    return false;
+    return null
   }
 }
 
